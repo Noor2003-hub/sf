@@ -6,7 +6,7 @@ from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 from helpers import apology, login_required,valid_name,get_name,get_pic,similar,song_name,get_song_pic,get_song_date
 from test import get_songs
-import numpy as np
+#import numpy as np
 
 # Configure application
 app = Flask(__name__)
