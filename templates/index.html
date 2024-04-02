@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Homepage
+{% endblock %}
+
+{% block main %}
+<form action="/new" method ="POST">
+<style>
+    body {background-size: 100% 150%;}
+</style>
+        <form><h1>Hello {{name}}</h1>
+        <h4>Welcome to SmartFan !</h4>
+        <table align="center" style="width:50%">
+            <tr>
+                <td></td>
+
+            </tr>
+            <tr>
+                <td><button class ="btn btn-primary" type="submit">Start New Game</button></td>
+
+            <td><h2>High Score: {{score}} Points</h2></td></tr>
+            <tr>
+                <td></td>
+
+            </tr>
+    </table></form>
+
+{% endblock %}
