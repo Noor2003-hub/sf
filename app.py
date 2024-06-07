@@ -1,17 +1,17 @@
 import os
 import random
+import cs50
 from cs50 import SQL
 from flask import Flask, flash, redirect, render_template, request, session
 from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
-from helpers import apology, login_required,valid_name,get_name,get_pic,similar,song_name,get_song_pic,get_song_date
+from helpers import apology, login_required, valid_name, get_name, get_pic, similar, song_name, get_song_pic, \
+    get_song_date
 from test import get_songs
-#import numpy as np
+import numpy as np
 
 # Configure application
 app = Flask(__name__)
-
-
 
 # Configure session to use filesystem (instead of signed cookies)
 app.config["SESSION_PERMANENT"] = False
@@ -20,306 +20,211 @@ Session(app)
 
 # Configure CS50 Library to use SQLite database
 db = SQL("sqlite:///project.db")
-fav_names=list(set()) #list(set) to avoid duplicating names of favorite artists
-random_artist=[] #random artist for each round
-appered=[] #letters appear for all rounds in game
-fav_pics=[] #pics of favorite artists
-
 
 
 @app.route('/about/')
-def about(): #return about.html
+def about():
     return render_template("about.html")
 
 
 @app.route('/finish/')
-def finish(): #return finish.html
-    return render_template("finish.html",artist=random_artist)
-    #return render_template("finish.html",artist=random_artist,done=True)
-
-
+def finish():
+    return render_template("finish.html", artist=session.get('random_artist', []))
 
 
 @app.route('/correct/', methods=["GET", "POST"])
-def correct(): #return correct.html
-    if request.method == "GET":
-        return render_template("correct.html",artist=random_artist,done=True)
-    else:
-        return render_template("correct.html",artist=random_artist,done=True)
-
-
-
+def correct():
+    return render_template("correct.html", artist=session.get('random_artist', []), done=True)
 
 
 @app.route('/game/', methods=["GET", "POST"])
 def game():
     if request.method == "GET":
-        if len(fav_names)<1: #if no names, game won't start
+        if 'fav_names' not in session or len(session['fav_names']) < 1:
             flash("You can't play without choosing at least 1 artist!")
-            return render_template("new.html",fav_names=fav_names)
+            return render_template("new.html", fav_names=session.get('fav_names', []))
 
-
-        score = db.execute("SELECT * FROM users WHERE id=? ", session["user_id"])[0]['score']
-
-        return render_template("game.html",artist=random_artist,score=score)
+        score = db.execute("SELECT * FROM users WHERE id=?", session["user_id"])[0]['score']
+        return render_template("game.html", artist=session.get('random_artist', []), score=score)
     else:
-        if len(random_artist)<1: #if no names, game won't start
-            return apology("Game was innterpted. please start new game")
-        name=random_artist[0]
-        answer=request.form.get("answer")
-        song=song_name(answer,name)
-        if request.form.get("answer"): #if user answer exist, and match the right answer or similar to it, 50 points will be added
-            if answer.lower() == song.lower() or similar(answer.lower() , song.lower())>0.7:
-                flash (f"Correct!")
-                score = db.execute("SELECT * FROM users WHERE id=? ", session["user_id"])[0]['score']
-                total=score+50
+        if 'random_artist' not in session or len(session['random_artist']) < 1:
+            return apology("Game was interrupted. Please start a new game.")
+
+        name = session['random_artist'][0]
+        answer = request.form.get("answer")
+        song = song_name(answer, name)
+
+        if request.form.get("answer"):
+            if answer.lower() == song.lower() or similar(answer.lower(), song.lower()) > 0.7:
+                flash("Correct!")
+                score = db.execute("SELECT * FROM users WHERE id=?", session["user_id"])[0]['score']
+                total = score + 50
                 db.execute("UPDATE users SET score = ? WHERE id = ?", total, session["user_id"])
-                high = db.execute("SELECT * FROM users WHERE id=? ", session["user_id"])[0]['high']
-                if total>high:
+
+                high = db.execute("SELECT * FROM users WHERE id=?", session["user_id"])[0]['high']
+                if total > high:
                     db.execute("UPDATE users SET high = ? WHERE id = ?", total, session["user_id"])
-                song_pic= get_song_pic(answer,name)
-                song_date= get_song_date(answer,name)
-                return render_template("correct.html",artist=random_artist,song=song,song_pic=song_pic,song_date=song_date,score=score+50,done=True)
-            flash ("Try Again.")  # if not match, prompt the user to try again
-            score = db.execute("SELECT * FROM users WHERE id=? ", session["user_id"])[0]['score']
-            return render_template("game.html",artist=random_artist,done=False,score=score)
+
+                song_pic = get_song_pic(answer, name)
+                song_date = get_song_date(answer, name)
+
+                return render_template("correct.html", artist=session['random_artist'], song=song, song_pic=song_pic,
+                                       song_date=song_date, score=total, done=True)
+
+            flash("Try Again.")
+            score = db.execute("SELECT * FROM users WHERE id=?", session["user_id"])[0]['score']
+            return render_template("game.html", artist=session['random_artist'], done=False, score=score)
         else:
-            flash (f"Please Enter track title that starts with {random_artist[2]}")
-            score = db.execute("SELECT * FROM users WHERE id=? ", session["user_id"])[0]['score']
-            return render_template("game.html",artist=random_artist,done=False,score=score)
-
-
+            flash(f"Please enter track title that starts with {session['random_artist'][2]}")
+            score = db.execute("SELECT * FROM users WHERE id=?", session["user_id"])[0]['score']
+            return render_template("game.html", artist=session['random_artist'], done=False, score=score)
 
 
 @app.route('/my-link/')
-def my_link(): #when new game start, clears any data about previous game
-    fav_names.clear()
-    fav_pics.clear()
-    appered.clear()
-    return render_template("new.html",fav_names=fav_names)
+def my_link():
+    session['fav_names'] = []
+    session['fav_pics'] = []
+    session['appered'] = []
+    return render_template("new.html", fav_names=session['fav_names'])
+
 
 @app.route('/my-link2/')
-def my_link2(): #this method choose random artist for each round of the game
+def my_link2():
     try:
-        score = db.execute("SELECT * FROM users WHERE id=? ", session["user_id"])[0]['score']
-        if len(fav_names)<1:
-            flash(f"please enter an artist name to start the game.")
-            return render_template("new.html",fav_names=fav_names)
-        name=random.choice(fav_names)
-        random_artist.append(name)
-        random_artist.append(get_pic(name))
-        songs=get_songs(name)
-        letters=[]
-        #print(songs)
+        score = db.execute("SELECT * FROM users WHERE id=?", session["user_id"])[0]['score']
+
+        if 'fav_names' not in session or len(session['fav_names']) < 1:
+            flash("Please enter an artist name to start the game.")
+            return render_template("new.html", fav_names=session.get('fav_names', []))
+
+        name = random.choice(session['fav_names'])
+        session['random_artist'] = [name, get_pic(name)]
+        songs = get_songs(name)
+
+        letters = []
         for song in songs:
-            if song !='':
-                first=song[0]
-                if first not in appered:
-                    letters.append(first)
-                    print('##',song)
-            else:
-                continue
-        if len(letters)<1 and score>0: #if all possible letters appered, game will finish
-            fav_pics.clear()
-            for namee in fav_names:
-                fav_pics.append(get_pic(namee))
+            if song != '' and song[0] not in session.get('appered', []):
+                letters.append(song[0])
 
-            return render_template("finish.html",fav_names=fav_names,fav_pics=fav_pics,score=score)
-        else: #if there still letters didnt appear in the game, use it for next round
-            random_artist.append(random.choice(letters))
-            appered.append(random_artist[2])
-            print('\n\n\n\n',random_artist,'\n\n\n\n')
-            score = db.execute("SELECT * FROM users WHERE id=? ", session["user_id"])[0]['score']
-            return render_template("game.html",artist=random_artist,score=score)
-    except:
-        return apology('Timed out! please refresh this page')
-
+        if len(letters) < 1 and score > 0:
+            session['fav_pics'] = [get_pic(n) for n in session['fav_names']]
+            return render_template("finish.html", fav_names=session['fav_names'], fav_pics=session['fav_pics'],
+                                   score=score)
+        else:
+            random_letter = random.choice(letters)
+            session['random_artist'].append(random_letter)
+            session.setdefault('appered', []).append(random_letter)
+            return render_template("game.html", artist=session['random_artist'], score=score)
+    except Exception as e:
+        return apology('Timed out! Please refresh this page')
 
 
 @app.route('/my-link3/')
 def my_link3():
-    random_artist.clear() #when new round required, clear data of old round and choose new random artist
+    session['random_artist'] = []
     return my_link2()
 
+
 @app.route('/my-link4/')
-def my_link4(): #when skip happen,loss 25 points and clear data about last round and choose new random artist
-    score = db.execute("SELECT * FROM users WHERE id=? ", session["user_id"])[0]['score']
-    total=score-25
-    if total>0:
-        db.execute("UPDATE users SET score = ? WHERE id = ?", total, session["user_id"])
-    else:
-        db.execute("UPDATE users SET score = ? WHERE id = ?", 0, session["user_id"])
+def my_link4():
+    score = db.execute("SELECT * FROM users WHERE id=?", session["user_id"])[0]['score']
+    total = max(0, score - 25)
+    db.execute("UPDATE users SET score = ? WHERE id = ?", total, session["user_id"])
     return my_link3()
-
-
 
 
 @app.route("/new", methods=["GET", "POST"])
 @login_required
-def new(): #return new.html and deal with invalid inputs
+def new():
     db.execute("UPDATE users SET score = ? WHERE id = ?", 0, session["user_id"])
-    if request.method == "GET":
-        artist=request.form.get("artist")
-        if not artist:
-            flash(f"please enter an artist name to start the game.")
-            return render_template("new.html",fav_names=fav_names)
-        if not valid_name(artist):
-            flash(f"Sorry! but this artist in Unavailable")
-            return render_template("new.html",fav_names=fav_names)
-        fav_names.append(get_name(artist))
-        fav_pics.append(get_pic(artist))
-        return render_template("new.html",fav_names=fav_names)
 
+    if request.method == "GET":
+        return render_template("new.html", fav_names=session.get('fav_names', []))
     else:
         try:
-            artist=request.form.get("artist")
+            artist = request.form.get("artist")
             if not artist:
-                flash(f"please enter an artist name to start the game.")
-                return render_template("new.html",fav_names=fav_names)
+                flash("Please enter an artist name to start the game.")
+                return render_template("new.html", fav_names=session.get('fav_names', []))
             if not valid_name(artist):
-                return apology("Sorry but this artist is not avilable")
-            if artist in fav_names:
+                flash("Sorry! But this artist is unavailable")
+                return render_template("new.html", fav_names=session.get('fav_names', []))
+            if artist in session.get('fav_names', []):
                 flash(f"{artist} already exists!")
-                return render_template("new.html",fav_names=fav_names)
-            fav_names.append(get_name(artist))
+                return render_template("new.html", fav_names=session.get('fav_names', []))
 
-            return render_template("new.html",fav_names=fav_names)
-        except :
-            return apology("Timed out. please try to refresh the page")
+            session.setdefault('fav_names', []).append(get_name(artist))
+            session.setdefault('fav_pics', []).append(get_pic(artist))
+            return render_template("new.html", fav_names=session['fav_names'])
+        except Exception as e:
+            return apology("Timed out. Please try to refresh the page")
 
 
 @app.route("/")
 @login_required
-def index(): #return index.html and clear any old data
-        db.execute("UPDATE users SET score = ? WHERE id = ?", 0, session["user_id"])
-        fav_names.clear()
-        fav_pics.clear()
-        appered.clear()
-        random_artist.clear()
-        name = db.execute("SELECT username FROM users WHERE id=? ", session["user_id"])[0]["username"]
-        score = db.execute("SELECT high FROM users WHERE id=? ", session["user_id"])[0]["high"]
-        return render_template("index.html", name=name, score=score)
+def index():
+    db.execute("UPDATE users SET score = ? WHERE id = ?", 0, session["user_id"])
+    session['fav_names'] = []
+    session['fav_pics'] = []
+    session['appered'] = []
+    session['random_artist'] = []
 
-
-
+    user = db.execute("SELECT username, high FROM users WHERE id=?", session["user_id"])[0]
+    return render_template("index.html", name=user["username"], score=user["high"])
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """Log user in"""
-
-    # Forget any user_id
     session.clear()
 
-    # User reached route via POST (as by submitting a form via POST)
     if request.method == "POST":
-        # Ensure username was submitted
-        if not request.form.get("username"):
-            return apology("must provide username", 403)
+        username = request.form.get("username")
+        password = request.form.get("password")
 
-        # Ensure password was submitted
-        elif not request.form.get("password"):
-            return apology("must provide password", 403)
+        if not username or not password:
+            return apology("Must provide username and password", 403)
 
-        # Query database for username
-        rows = db.execute(
-            "SELECT * FROM users WHERE username = ?", request.form.get("username")
-        )
+        rows = db.execute("SELECT * FROM users WHERE username = ?", username)
 
-        # Ensure username exists and password is correct
-        if len(rows) != 1 or not check_password_hash(
-            rows[0]["hash"], request.form.get("password")
-        ):
-            return apology("invalid username and/or password", 403)
+        if len(rows) != 1 or not check_password_hash(rows[0]["hash"], password):
+            return apology("Invalid username and/or password", 403)
 
-        # Remember which user has logged in
         session["user_id"] = rows[0]["id"]
-
-        # Redirect user to home page
         return redirect("/")
-
-    # User reached route via GET (as by clicking a link or via redirect)
     else:
         return render_template("login.html")
 
 
-
-
-
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    """Register user"""
     if request.method == "POST":
-        if (
-            request.form.get("username") == ""
-            or request.form.get("password") == ""
-            or request.form.get("confirmation") == ""
-        ):
-            return apology("username or password is empty.")
-        elif (
-            len(
-                db.execute(
-                    "SELECT * FROM users WHERE username = ?",
-                    request.form.get("username"),
-                )
-            )
-            > 0
-        ):
-            return apology("username already exists.")
-        elif request.form.get("password") != request.form.get("confirmation"):
-            return apology("password do not match.")
-        elif len(request.form.get("password")) < 4:
-            return apology("password should be longer than 4 letters")
-        pas = request.form.get("password")
-        have_num = False
-        have_symbol = False
-        symbols = {
-            "[",
-            "@",
-            "_",
-            "!",
-            "#",
-            "$",
-            "%",
-            "^",
-            "&",
-            "*",
-            "(",
-            ")",
-            "<",
-            ">",
-            "?",
-            "/",
-            "\\",
-            "|",
-            "}",
-            "{",
-            "~",
-            ":",
-            "]",
-            "."
-        }
-        for letter in pas:
-            if letter.isdigit():
-                have_num = True
-            if letter in symbols:
-                have_symbol = True
-        if not have_num or not have_symbol:
-            return apology(
-                "password should contain at least 1 digit and at least 1 special character"
-            )
-        db.execute(
-            "INSERT INTO users (username, hash, score) VALUES(?, ?, ?)",
-            request.form.get("username"),
-            generate_password_hash(request.form.get("password")),
-            0,
-        )
-        rows = db.execute(
-            "SELECT * FROM users WHERE username = ?", request.form.get("username")
-        )
-        session["user_id"] = rows[0]["id"]
+        username = request.form.get("username")
+        password = request.form.get("password")
+        confirmation = request.form.get("confirmation")
+
+        if not username or not password or not confirmation:
+            return apology("Username or password is empty.")
+        if db.execute("SELECT * FROM users WHERE username = ?", username):
+            return apology("Username already exists.")
+        if password != confirmation:
+            return apology("Passwords do not match.")
+        if len(password) < 4:
+            return apology("Password should be longer than 4 characters")
+
+        has_num = any(char.isdigit() for char in password)
+        has_special = any(char in set("[@_!#$%^&*()<>?/|}{~:]") for char in password)
+
+        if not has_num or not has_special:
+            return apology("Password should contain at least 1 digit and at least 1 special character")
+
+        db.execute("INSERT INTO users (username, hash, score) VALUES(?, ?, ?)", username,
+                   generate_password_hash(password), 0)
+        user = db.execute("SELECT * FROM users WHERE username = ?", username)[0]
+        session["user_id"] = user["id"]
         return redirect("/")
+
     return render_template("register.html")
 
-if __name__ =='__main__':
-    app.run(debug=False,host='0.0.0.0')
+
+if __name__ == "__main__":
+    app.run(debug=True)
