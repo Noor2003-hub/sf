@@ -7,6 +7,7 @@ colorama==0.4.6
 cs50==9.3.4
 Flask==3.0.2
 Flask-Session==0.8.0
+numpy==1.24.3
 greenlet==3.0.3
 gunicorn==21.2.0
 idna==3.6
